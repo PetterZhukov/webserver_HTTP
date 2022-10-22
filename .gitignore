@@ -1,6 +1,8 @@
 # 生成文件
 main
 
+# vscode
+.vscode/*
 
 # 资源文件
 resources/*
