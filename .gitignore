@@ -1,3 +1,12 @@
+# 生成文件
+main
+
+
+# 资源文件
+resources/*
+test/*
+
+
 # Prerequisites
 *.d
 
