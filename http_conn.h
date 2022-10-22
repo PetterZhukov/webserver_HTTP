@@ -35,7 +35,7 @@ public:
         解析客户端请求时，主状态机的状态
         CHECK_STATE_REQUESTLINE   : 当前正在分析请求行
         CHECK_STATE_HEADER        : 当前正在分析头部字段
-        CHECK_STATE_CONTENT         : 当前正在解析请求体
+        CHECK_STATE_CONTENT       : 当前正在解析请求体
     */
     enum CHECK_STATE { CHECK_STATE_REQUESTLINE = 0, CHECK_STATE_HEADER, CHECK_STATE_CONTENT };
     
@@ -120,6 +120,28 @@ private:
     //================== 从状态机 ====================
     LINE_STATUS parse_line(); 
 
+    //================== 写响应报文 ====================
+    // 写响应报文
+    bool process_write(HTTP_CODE ret);
+    // 往写缓冲区中写数据
+    bool add_response(const char*format, ...);
+    // 添加状态行
+    bool add_status_line(int status,const char*title);
+    // 添加响应头部
+    bool add_headers(int content_len);
+    // 响应头部组件
+    //      content-length
+    bool add_content_length(int content_len);
+    //      keep_alive
+    bool add_connection();
+    //      Content-Type
+    bool add_content_type();
+    //      发送时间
+    bool add_date(time_t t);
+    //      空白结束行
+    bool add_blank_line();
+    // 添加响应正文
+    bool add_content( const char* content );
 
     // 返回当前行的起始位置对应的指针
     char *get_line() { return m_read_buf + m_start_line; }

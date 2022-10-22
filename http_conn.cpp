@@ -2,6 +2,17 @@
 #define PRINT_DEBUG 1
 #define show_read_data 1
 
+//================== HTTP响应的状态信息 ====================
+// 定义HTTP响应的一些状态信息
+const char* ok_200_title = "OK";
+const char* error_400_title = "Bad Request";
+const char* error_400_form = "Your request has bad syntax or is inherently impossible to satisfy.\n";
+const char* error_403_title = "Forbidden";
+const char* error_403_form = "You do not have permission to get file from this server.\n";
+const char* error_404_title = "Not Found";
+const char* error_404_form = "The requested file was not found on this server.\n";
+const char* error_500_title = "Internal Error";
+const char* error_500_form = "There was an unusual problem serving the requested file.\n";
 
 //================== 初始化 ====================
 int http_conn::st_m_epollfd=-1;
@@ -146,8 +157,13 @@ void http_conn::process()
     }
 
     // 生成响应报文
-
-
+    bool write_ret = process_write( read_ret );
+    if(!write_ret){
+        close_conn;
+    }
+    else
+        // ?:close之后时候要执行modfd
+        modfd(st_m_epollfd,m_sockfd,EPOLLOUT);
 
 }
 
@@ -399,4 +415,69 @@ http_conn::LINE_STATUS http_conn::parse_line()
         }
     }
     return LINE_OPEN;
+}
+
+
+//================== 写入部分 ====================
+// 往写缓冲区中写数据
+bool http_conn::add_response(const char*format, ...)
+{
+    return true;
+}
+// 添加状态行
+bool http_conn::add_status_line(int status,const char*title)
+{
+    return true;
+}
+// 添加响应头部
+bool http_conn::add_headers(int content_len)
+{
+    return true;
+}
+// 响应头部组件
+//      content-length
+bool http_conn::add_content_length(int content_len)
+{
+    return true;
+}
+//      keep_alive
+bool http_conn::add_connection()
+{
+    return true;
+}
+//      Content-Type
+bool http_conn::add_content_type()
+{   
+    return true;
+}   
+//      发送时间
+bool http_conn::add_date(time_t t)
+{
+    return true;
+}
+//      空白结束行
+bool http_conn::add_blank_line()
+{
+    return true;
+}
+// 添加响应正文
+bool http_conn::add_content( const char* content )
+{
+    return true;
+}
+
+
+//================== 生成返回的报文 ====================
+bool http_conn::process_write(HTTP_CODE ret){
+    /*
+    NO_REQUEST : 请求不完整，需要继续读取客户数据
+    GET_REQUEST : 表示获得了一个完成的客户请求
+    BAD_REQUEST : 表示客户请求语法错误
+    NO_RESOURCE : 表示服务器没有资源
+    FORBIDDEN_REQUEST : 表示客户对资源没有足够的访问权限
+    FILE_REQUEST : 文件请求,获取文件成功
+    INTERNAL_ERROR : 表示服务器内部错误
+    CLOSED_CONNECTION : 表示客户端已经关闭连接了
+*/
+
 }
