@@ -126,7 +126,12 @@ int main(int argc,char* argv[])
                 sockaddr_in client_addr;
                 socklen_t client_addrlen=sizeof(client_addr);
                 int connfd=accept(listenfd,(sockaddr*)&client_addr,&client_addrlen);
-
+                
+                if ( connfd < 0 ) {
+                    printf( "errno is: %d\n", errno );
+                    continue;
+                } 
+                
                 // 判断文件描述符表是否满了
                 if(http_conn::st_m_usercount>=MAX_FD)
                 {

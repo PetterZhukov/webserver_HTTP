@@ -6,7 +6,7 @@
 // #define show_read_data 1
 #define process_read_result 1
 // #define mmap_print 1
-#define print_writev_result 1
+// #define print_writev_result 1
 
 //================== HTTP响应的状态信息 ====================
 // 定义HTTP响应的一些状态信息
@@ -112,7 +112,7 @@ void http_conn::init_private(){
     m_method=GET;
     m_version=0;
     //HTTP 1.1 中默认启用Keep-Alive，如果加入"Connection: close "，才关闭
-    m_keepalive=true;
+    m_keepalive=false;
 
     m_host=NULL;
     m_content_length=0;
