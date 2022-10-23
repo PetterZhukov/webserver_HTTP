@@ -3,6 +3,7 @@ main
 
 # debug
 .debug/*
+core
 
 # vscode
 .vscode/*
