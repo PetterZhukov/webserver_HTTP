@@ -1,6 +1,9 @@
 # 生成文件
 main
 
+# debug
+.debug/*
+
 # vscode
 .vscode/*
 
