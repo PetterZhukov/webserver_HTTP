@@ -4,6 +4,11 @@
 #include <list>
 #include "locker.h"
 
+// #define 控制
+//#define show_create_pool 1
+//#define show_pool_append 1
+
+
 // 模板类 线程池
 template <typename T>
 class threadpool
@@ -56,7 +61,9 @@ threadpool<T>::threadpool(int poolsize, int maxquest) :
     // 初始化线程池的线程
     for (int i = 0; i < m_thread_poolsize; i++)
     {
-        printf( "create the %dth thread\n", i);
+        #ifdef  show_create_pool
+            printf( "create the %dth thread\n", i+1);
+        #endif
         if (pthread_create(m_threads + i, NULL, worker, this) != 0)
         {
             delete[] m_threads;
@@ -71,6 +78,7 @@ threadpool<T>::threadpool(int poolsize, int maxquest) :
             throw std::exception();
         }
     }
+    printf("thread pool ready \n");
 }
 
 template <typename T>
@@ -86,6 +94,9 @@ threadpool<T>::~threadpool()
 template <typename T>
 bool threadpool<T>::append(T *quest)
 {
+    #ifdef show_pool_append
+        printf("append begin :: list.size: %d \n",(int)(m_questqueue.size()));
+    #endif
     // 操作请求队列加锁
     m_queuemutex.lock();
     if (m_questqueue.size() >= m_max_queue)
@@ -98,6 +109,10 @@ bool threadpool<T>::append(T *quest)
     m_sem_queue.post();
 
     m_queuemutex.unlock();
+
+    #ifdef show_pool_append
+        printf("append end :: list.size: %d \n",(int)(m_questqueue.size()));
+    #endif
     return true;
 }
 

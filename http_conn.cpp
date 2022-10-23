@@ -1,6 +1,10 @@
 #include "http_conn.h"
-#define PRINT_DEBUG 1
-#define show_read_data 1
+
+//#define patse_message 0
+#define check_write_header 1
+#define check_write_content 1
+//#define show_read_data 1
+//#define process_read_result 1
 
 //================== HTTP响应的状态信息 ====================
 // 定义HTTP响应的一些状态信息
@@ -97,13 +101,25 @@ void http_conn::init_private(){
     m_checked_index = 0;
     m_start_line = 0;
     m_read_index = 0;
+    m_write_index=0;
 
+    m_iv_count=0;
     m_url=NULL;
     m_method=GET;
     m_version=0;
-    m_keepalive=false;
+    //HTTP 1.1 中默认启用Keep-Alive，如果加入"Connection: close "，才关闭
+    m_keepalive=true;
+
+    m_host=NULL;
+    m_content_length=0;
+    m_address_mmap=NULL;
+    
 
     bzero(m_read_buf,READ_BUFFER_SIZE);
+    bzero(m_write_buf,WRITE_BUFFER_SIZE);
+    bzero(&m_address,sizeof(m_address));
+    bzero(m_filename,FILENAME_MAXLEN);
+
 }
 
 //关闭连接
@@ -141,15 +157,91 @@ bool http_conn::read()
         }
         m_read_index+=bytes_read;
     }
-    if(show_read_data) printf("读取到的数据 : %s\n",m_read_buf);
+    #ifdef  show_read_data
+        printf("\n读取到的数据 : \n       %s\n",m_read_buf);
+    #endif
     return true;
 }
 
-// 非阻塞的写
-bool http_conn::write()
+
+
+// 对内存映射区进行释放
+void http_conn::unmap()
 {
-    printf("一次性写完数据\n");
-    return true;
+    if(m_address_mmap)
+    {
+        munmap(m_address_mmap,m_file_stat.st_size);
+        m_address_mmap=NULL;
+    }
+}
+
+
+// 非阻塞的写
+bool http_conn::Write()
+{
+    int bytes_have_send=0;
+    int bytes_to_send=m_write_index;
+
+    if(bytes_to_send==0){
+        // 将要发送的字节为0
+        modfd(st_m_epollfd,m_sockfd,EPOLLIN);
+        init_private();
+        return true;
+    }
+
+    #ifdef check_write_header
+        printf("write header=============\n%s\n",(char *)m_iv[0].iov_base);
+    #endif
+
+    #ifdef check_write_content
+        if (m_iv_count > 1)
+            printf("write content=============\n%s\n", (char *)m_iv[1].iov_base);
+    #endif
+
+    while (1)
+    {
+        int ret = writev(m_sockfd, m_iv, m_iv_count);
+        if (ret == -1)
+        {
+            // 发送失败
+            if (errno == EAGAIN)
+            {
+                // 重试
+                modfd(st_m_epollfd, m_sockfd, EPOLLOUT);
+                return true;
+            }
+            unmap(); // 释放内存
+            return false;
+        }
+        else
+        {
+            // 本次写成功
+            bytes_have_send += ret;
+            // ?要写 bytes_to_send -= ret;
+            if (bytes_have_send >= bytes_to_send)
+            {
+                // 发送HTTP响应成功,释放内存
+                unmap();
+                // 是否keep-alive
+                if (m_keepalive)
+                {
+                    init_private();
+                    modfd(st_m_epollfd, m_sockfd, EPOLLIN);
+                    // 继续接受信息
+                    return true;
+                }
+                else
+                {
+                    // 方便下次复用
+                    modfd(st_m_epollfd, m_sockfd, EPOLLIN);
+                    // main接收到false后会关闭连接
+                    // ?在write里面写close会不会更简单直接
+                    return false;
+                }
+            }
+        }
+    }
+    return false;   // 以防万一的返回值
 }
 
 // 处理客户端的请求
@@ -158,7 +250,9 @@ void http_conn::process()
 {
     // 解析HTTP请求
     HTTP_CODE read_ret=process_read();
-    printf("process_read result : %d\n",read_ret);
+    #ifdef  process_read_result
+        printf("process_read result : %d\n",read_ret);
+    #endif
     if(read_ret==NO_REQUEST)
     {   // 读的没有问题,则修改fd,让其再次使用
         modfd(st_m_epollfd,m_sockfd,EPOLLIN);
@@ -189,7 +283,9 @@ http_conn::HTTP_CODE http_conn::process_read()
     {   // 解析到了一行完整的数据  或者解析到了请求体,也是完整的数据
         // 获取一行数据
         text=get_line();
-        if(PRINT_DEBUG) printf("\n即将解析的数据: %s\n",text);
+        #ifdef patse_message
+             printf("\n即将解析的数据: %s\n",text);
+        #endif
         m_start_line=m_checked_index;
         //printf("got 1 http line : %s\n",text);
     
@@ -290,13 +386,17 @@ http_conn::HTTP_CODE http_conn::parse_request_line(char *text)
     m_check_state=CHECK_STATE_HEADER;
 
     // 3.return
-    if(PRINT_DEBUG) printf("请求头解析成功\n    url:%s,version:%s,method:%s\n",m_url,m_version,method);
+    #ifdef patse_message
+        printf("请求头解析成功\n    url:%s,version:%s,method:%s\n",m_url,m_version,method);
+    #endif
     return NO_REQUEST;
 }
 // 解析HTTP请求头
 http_conn::HTTP_CODE http_conn::parse_headers(char *text)
 {
-    if(PRINT_DEBUG) printf("分析请求头 : %s\n",text);
+    #ifdef patse_message
+        printf("分析请求头 : %s\n",text);
+    #endif
     /**
      * "Connection:"
      * "Content-Length:"
@@ -320,6 +420,9 @@ http_conn::HTTP_CODE http_conn::parse_headers(char *text)
         if(strcasecmp(text,"keep-alive")==0){
             m_keepalive=true;
         }
+        else if(strcasecmp(text,"close")==0){
+            m_keepalive=false;
+        }
     }
     else if(strncasecmp( text, "Content-Length:", 15 )==0){
         text+=15;   // 去除key
@@ -334,7 +437,9 @@ http_conn::HTTP_CODE http_conn::parse_headers(char *text)
         m_host=text;
     }
     else{
-        if(PRINT_DEBUG) printf("解析失败,不知名的请求头: %s\n",text);
+        #ifdef patse_message
+            printf("解析失败,不知名的请求头: %s\n",text);
+        #endif
     }
     return NO_REQUEST;
 }
@@ -435,6 +540,7 @@ bool http_conn::add_response(const char*format, ...)
         return false;   // 已满
     }
     va_list args;
+    va_start(args,format);
     int len=vsnprintf(m_write_buf+m_write_index,WRITE_BUFFER_SIZE-m_write_index-1,format,args);
     // vsnprintf 用法类似snprintf,输入的最大长度为__maxlen-1
     // 调用args和format进行可变参数输入
@@ -443,7 +549,7 @@ bool http_conn::add_response(const char*format, ...)
         // 说明输入的字符溢出
         return false;
     }
-    m_write_index+=len;
+    m_write_index+=len; // 更新写缓冲区的长度
     va_end(args);
     return true;     
 }
@@ -483,7 +589,9 @@ bool http_conn::add_connection()
 //      发送时间
 bool http_conn::add_date(time_t t)
 {
-    return add_response("Date: %s\r\n", localtime(&t));
+    char timebuf[50];
+	strftime(timebuf, 80, "%Y-%m-%d %H:%M:%S", localtime(&t));
+    return add_response("Date: %s\r\n", timebuf);
 }
 //      空白结束行
 bool http_conn::add_blank_line()
@@ -514,8 +622,12 @@ bool http_conn::process_write(HTTP_CODE ret){
     const char *form = std::get<2>(response_info[ret]);
     if (ret == FILE_REQUEST)
     {// OK,发送报文头和文件
-        if(add_status_line(status, title)) return false;
-        if(add_headers(strlen(form), time(NULL))) return false; // 发送本地时间
+        if(!add_status_line(status, title)) return false;
+        if(!add_headers(m_file_stat.st_size, time(NULL))) return false; // 发送本地时间
+        #ifdef check_write_header
+            printf("OK 的 报文头:\n");
+            write(STDOUT_FILENO,m_write_buf,m_write_index);
+        #endif
         m_iv[0].iov_base=m_write_buf;
         m_iv[0].iov_len=m_write_index;
         m_iv[1].iov_base=m_address_mmap;
@@ -525,9 +637,9 @@ bool http_conn::process_write(HTTP_CODE ret){
     }
     else if(response_info.find(ret)!=response_info.end())
     {// 发送错误信息
-        if(add_status_line(status, title)) return false;
-        if(add_headers(strlen(form), time(NULL))) return false; // 发送本地时间
-        if(add_content(form)) return false;
+        if(!add_status_line(status, title)) return false;
+        if(!add_headers(strlen(form), time(NULL))) return false; // 发送本地时间
+        if(!add_content(form)) return false;
         m_iv[0].iov_base = m_write_buf;
         m_iv[0].iov_len = m_write_index;
         m_iv_count = 1;

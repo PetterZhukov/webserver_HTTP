@@ -156,7 +156,7 @@ int main(int argc,char* argv[])
             }
             else if(events[i].events & EPOLLOUT)
             {
-                if(users[sockfd].write()){
+                if(users[sockfd].Write()){
                     // 写成功(无操作)
                     ;
                 }

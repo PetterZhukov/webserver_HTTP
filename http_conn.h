@@ -1,8 +1,6 @@
 #ifndef _HTTP_CONN_H_
 #define _HTTP_CONN_H_
 
-#include <algorithm>
-#include <sys/epoll.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -11,14 +9,18 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/mman.h>
+#include <sys/uio.h>
+#include <sys/epoll.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <string.h>
 #include <unistd.h>
 #include <stdarg.h>
 #include <time.h>
+#include <algorithm>
 #include <unordered_map>
 #include <tuple>
+
 
 using std::unordered_map;
 using std::tuple;
@@ -80,7 +82,7 @@ public:
     // 非阻塞的读
     bool read();
     // 非阻塞的写
-    bool write();
+    bool Write();
 
  
 private:
@@ -111,58 +113,40 @@ private:
     int m_content_length;   // 描述HTTP消息实体的传输长度
     bool m_keepalive;       // HTTP请求是否要保持连接
     //================== 返回数据 ====================
-    char m_filename[FILENAME_MAX];  // 客户请求的目标文件的完整目录,其内容为 root_directory+m_url
-    struct stat m_file_stat;        // 目标文件的状态
-    char * m_address_mmap;            // 客户请求的数据被mmap到的位置
+    char m_filename[FILENAME_MAX]; // 客户请求的目标文件的完整目录,其内容为 root_directory+m_url
+    struct stat m_file_stat;       // 目标文件的状态
+    char *m_address_mmap;          // 客户请求的数据被mmap到的位置
+    void unmap();               // 释放内存映射的空间
 
     // 初始化基本的数值
     void init_private();
-
     //================== 状态机 ====================
     CHECK_STATE m_check_state;  // 主状态机当前所处的位置
     //============== 主状态机 ===================
-    // 解析HTTP请求
-    HTTP_CODE process_read();   
-    // 解析HTTP请求首行
-    HTTP_CODE parse_request_line(char * text);   
-    // 解析HTTP请求头
-    HTTP_CODE parse_headers(char * text);   
-    // 解析HTTP请求内容
-    HTTP_CODE parse_content_complete(char * text);   
-    // 对报文做具体的处理
-    HTTP_CODE do_request();
+    HTTP_CODE process_read();                   // 解析HTTP请求
+    HTTP_CODE parse_request_line(char *text);   // 解析HTTP请求首行
+    HTTP_CODE parse_headers(char *text);        // 解析HTTP请求头
+    HTTP_CODE parse_content_complete(char *text); // 解析HTTP请求内容
+    HTTP_CODE do_request();                     // 对报文做具体的处理
     //================== 从状态机 ====================
-    LINE_STATUS parse_line(); 
+    LINE_STATUS parse_line();
 
     //================== 写响应报文 ====================
-    // 写响应报文
-    bool process_write(HTTP_CODE ret);
-    // 往写缓冲区中写数据
-    bool add_response(const char*format, ...);
-    // 添加状态行
-    bool add_status_line(int status,const char*title);
-    // 添加响应头部
-    bool add_headers(int content_len,time_t time);
+    bool process_write(HTTP_CODE ret);              // 写响应报文
+    bool add_response(const char *format, ...);     // 往写缓冲区中写数据
+    bool add_status_line(int status, const char *title); // 添加状态行
+    bool add_headers(int content_len, time_t time);     // 添加响应头部
     // 响应头部组件
-    //      content-length
-    bool add_content_length(int content_len);
-    //      keep_alive
-    bool add_connection();
-    //      Content-Type
-    bool add_content_type();
-    //      发送时间
-    bool add_date(time_t t);
-    //      空白结束行
-    bool add_blank_line();
-    // 添加响应正文
-    bool add_content( const char* content );
+    bool add_content_length(int content_len);   // content-length
+    bool add_connection();      // keep_alive
+    bool add_content_type();    // Content-Type
+    bool add_date(time_t t);    // 发送时间
+    bool add_blank_line();      // 空白结束行
+    bool add_content(const char *content); // 添加响应正文
+    
     // writev成员
-    // 存储分散写的内容,0为报文头,1为报文内容
-    struct iovec m_iv[2]; 
-    // writev数量
-    int m_iv_count; 
-
-
+    struct iovec m_iv[2]; // 存储分散写的内容,0为报文头,1为报文内容
+    int m_iv_count;     // writev数量
 
     // 返回当前行的起始位置对应的指针
     char *get_line() { return m_read_buf + m_start_line; }
