@@ -15,6 +15,14 @@
 #include <fcntl.h>
 #include <string.h>
 #include <unistd.h>
+#include <stdarg.h>
+#include <time.h>
+#include <unordered_map>
+#include <tuple>
+
+using std::unordered_map;
+using std::tuple;
+
 
 
 class http_conn
@@ -80,12 +88,18 @@ private:
     int m_sockfd;           //该HTTP连接的socket
     sockaddr_in m_address;  // 通信的socket地址
 
-    //================== 缓冲区 ====================
+    //================== 读缓冲区 ====================
     char m_read_buf[READ_BUFFER_SIZE];  // 读缓冲区
     int m_read_index;       // 标识读缓冲区中以及读入的客户端数据的最后一个字节的下标
 
     int m_checked_index;    // 当前正在分析的字符在读缓冲区的位置
     int m_start_line;       // 当前正在解析的行的起始位置
+
+    //================== 写缓冲区 ====================
+    char m_write_buf[WRITE_BUFFER_SIZE];    // 写缓冲区
+    int m_write_index;       // 写缓冲区中待发送的字节数
+
+
 
     //================== 报文解析结果 ========================
     //================== 请求行分析结果 ====================
@@ -128,7 +142,7 @@ private:
     // 添加状态行
     bool add_status_line(int status,const char*title);
     // 添加响应头部
-    bool add_headers(int content_len);
+    bool add_headers(int content_len,time_t time);
     // 响应头部组件
     //      content-length
     bool add_content_length(int content_len);
@@ -142,6 +156,13 @@ private:
     bool add_blank_line();
     // 添加响应正文
     bool add_content( const char* content );
+    // writev成员
+    // 存储分散写的内容,0为报文头,1为报文内容
+    struct iovec m_iv[2]; 
+    // writev数量
+    int m_iv_count; 
+
+
 
     // 返回当前行的起始位置对应的指针
     char *get_line() { return m_read_buf + m_start_line; }

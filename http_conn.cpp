@@ -14,6 +14,15 @@ const char* error_404_form = "The requested file was not found on this server.\n
 const char* error_500_title = "Internal Error";
 const char* error_500_form = "There was an unusual problem serving the requested file.\n";
 
+// 用hashmap来降低代码量
+unordered_map<int, tuple<int, const char *, const char *>> response_info{
+    {http_conn::FILE_REQUEST, {200, ok_200_title, NULL}},
+    {http_conn::BAD_REQUEST, {400, error_400_title, error_400_form}},
+    {http_conn::FORBIDDEN_REQUEST, {403, error_403_title, error_403_form}},
+    {http_conn::NO_RESOURCE, {404, error_404_title, error_404_form}},
+    {http_conn::INTERNAL_ERROR, {500, error_500_title, error_500_form}},
+};
+
 //================== 初始化 ====================
 int http_conn::st_m_epollfd=-1;
 int http_conn::st_m_usercount=0;
@@ -159,10 +168,10 @@ void http_conn::process()
     // 生成响应报文
     bool write_ret = process_write( read_ret );
     if(!write_ret){
-        close_conn;
+        close_conn();
     }
     else
-        // ?:close之后时候要执行modfd
+        // ?:close之后时候要执行modfd吗
         modfd(st_m_epollfd,m_sockfd,EPOLLOUT);
 
 }
@@ -422,62 +431,108 @@ http_conn::LINE_STATUS http_conn::parse_line()
 // 往写缓冲区中写数据
 bool http_conn::add_response(const char*format, ...)
 {
-    return true;
+    if(m_write_index >= WRITE_BUFFER_SIZE){
+        return false;   // 已满
+    }
+    va_list args;
+    int len=vsnprintf(m_write_buf+m_write_index,WRITE_BUFFER_SIZE-m_write_index-1,format,args);
+    // vsnprintf 用法类似snprintf,输入的最大长度为__maxlen-1
+    // 调用args和format进行可变参数输入
+    // 返回值为若空间足够则输入的长度
+    if(len > WRITE_BUFFER_SIZE-m_write_index-1){
+        // 说明输入的字符溢出
+        return false;
+    }
+    m_write_index+=len;
+    va_end(args);
+    return true;     
 }
 // 添加状态行
 bool http_conn::add_status_line(int status,const char*title)
 {
-    return true;
+    return add_response("%s %d %s\r\n", "HTTP/1.1", status, title);
 }
 // 添加响应头部
-bool http_conn::add_headers(int content_len)
+bool http_conn::add_headers(int content_len,time_t time)
 {
+    if(!add_content_length(content_len)) return false;
+    if(!add_content_type()) return false;
+    if(!add_connection()) return false;
+    if(!add_date(time)) return false;
+    // if(!) return false;
+    if(!add_blank_line()) return false;
     return true;
 }
 // 响应头部组件
 //      content-length
 bool http_conn::add_content_length(int content_len)
 {
-    return true;
-}
-//      keep_alive
-bool http_conn::add_connection()
-{
-    return true;
+    return add_response("Content-Length: %d\r\n",content_len);
 }
 //      Content-Type
 bool http_conn::add_content_type()
-{   
-    return true;
-}   
+{
+    // ?考虑区分是图片 / html/css
+    return add_response("Content-Type: %s\r\n", "text/html");
+}
+//      keep_alive / close
+bool http_conn::add_connection()
+{
+    return add_response("Connection: %s\r\n", (m_keepalive == true) ? "keep-alive" : "close");
+}
 //      发送时间
 bool http_conn::add_date(time_t t)
 {
-    return true;
+    return add_response("Date: %s\r\n", localtime(&t));
 }
 //      空白结束行
 bool http_conn::add_blank_line()
 {
-    return true;
+    return add_response("\r\n");
 }
 // 添加响应正文
-bool http_conn::add_content( const char* content )
+bool http_conn::add_content(const char *content)
 {
-    return true;
+    return add_response("%s", content);
 }
-
 
 //================== 生成返回的报文 ====================
 bool http_conn::process_write(HTTP_CODE ret){
     /*
-    NO_REQUEST : 请求不完整，需要继续读取客户数据
-    GET_REQUEST : 表示获得了一个完成的客户请求
-    BAD_REQUEST : 表示客户请求语法错误
-    NO_RESOURCE : 表示服务器没有资源
-    FORBIDDEN_REQUEST : 表示客户对资源没有足够的访问权限
-    FILE_REQUEST : 文件请求,获取文件成功
-    INTERNAL_ERROR : 表示服务器内部错误
-    CLOSED_CONNECTION : 表示客户端已经关闭连接了
-*/
+        NO_REQUEST : 请求不完整，需要继续读取客户数据
+        GET_REQUEST : 表示获得了一个完成的客户请求
+        BAD_REQUEST : 表示客户请求语法错误
+        NO_RESOURCE : 表示服务器没有资源
+        FORBIDDEN_REQUEST : 表示客户对资源没有足够的访问权限
+        FILE_REQUEST : 文件请求,获取文件成功
+        INTERNAL_ERROR : 表示服务器内部错误
+        CLOSED_CONNECTION : 表示客户端已经关闭连接了
+    */
 
+    int status = std::get<0>(response_info[ret]);
+    const char *title = std::get<1>(response_info[ret]);
+    const char *form = std::get<2>(response_info[ret]);
+    if (ret == FILE_REQUEST)
+    {// OK,发送报文头和文件
+        if(add_status_line(status, title)) return false;
+        if(add_headers(strlen(form), time(NULL))) return false; // 发送本地时间
+        m_iv[0].iov_base=m_write_buf;
+        m_iv[0].iov_len=m_write_index;
+        m_iv[1].iov_base=m_address_mmap;
+        m_iv[1].iov_len=m_file_stat.st_size;
+        m_iv_count=2;
+        return true;
+    }
+    else if(response_info.find(ret)!=response_info.end())
+    {// 发送错误信息
+        if(add_status_line(status, title)) return false;
+        if(add_headers(strlen(form), time(NULL))) return false; // 发送本地时间
+        if(add_content(form)) return false;
+        m_iv[0].iov_base = m_write_buf;
+        m_iv[0].iov_len = m_write_index;
+        m_iv_count = 1;
+        return true;
+    }
+    else 
+        return false;
 }
