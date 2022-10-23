@@ -157,11 +157,11 @@ int main(int argc,char* argv[])
             else if(events[i].events & EPOLLOUT)
             {
                 if(users[sockfd].Write()){
-                    // 写成功(无操作)
+                    // 写成功
                     ;
                 }
                 else{
-                    // 写失败了
+                    // 写失败了 / 写完不保持连接
                     users[sockfd].close_conn();
                 }
             }
