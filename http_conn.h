@@ -96,12 +96,18 @@ private:
 
     int m_checked_index;    // 当前正在分析的字符在读缓冲区的位置
     int m_start_line;       // 当前正在解析的行的起始位置
+    char *get_line() { return m_read_buf + m_start_line; } // 返回当前行的起始位置对应的指针
 
     //================== 写缓冲区 ====================
     char m_write_buf[WRITE_BUFFER_SIZE];    // 写缓冲区
     int m_write_index;       // 写缓冲区中待发送的字节数
 
-
+    // writev成员
+    struct iovec m_iv[2]; // 存储分散写的内容,0为报文头,1为报文内容
+    int m_iv_count;     // writev数量
+    // 记录发送情况
+    int bytes_to_send;              // 将要发送的数据的字节数
+    int bytes_have_send;            // 已经发送的字节数
 
     //================== 报文解析结果 ========================
     //================== 请求行分析结果 ====================
@@ -116,7 +122,7 @@ private:
     char m_filename[FILENAME_MAX]; // 客户请求的目标文件的完整目录,其内容为 root_directory+m_url
     struct stat m_file_stat;       // 目标文件的状态
     char *m_address_mmap;          // 客户请求的数据被mmap到的位置
-    void unmap();               // 释放内存映射的空间
+    void unmap();                  // 释放内存映射的空间
 
     // 初始化基本的数值
     void init_private();
@@ -144,12 +150,7 @@ private:
     bool add_blank_line();      // 空白结束行
     bool add_content(const char *content); // 添加响应正文
     
-    // writev成员
-    struct iovec m_iv[2]; // 存储分散写的内容,0为报文头,1为报文内容
-    int m_iv_count;     // writev数量
-
-    // 返回当前行的起始位置对应的指针
-    char *get_line() { return m_read_buf + m_start_line; }
+    
 };
 
 

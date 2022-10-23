@@ -1,10 +1,11 @@
 #include "http_conn.h"
 
 //#define patse_message 0
-#define check_write_header 1
-#define check_write_content 1
-//#define show_read_data 1
-//#define process_read_result 1
+#define check_write_header 0
+// #define check_write_content 1
+// #define show_read_data 1
+#define process_read_result 1
+#define mmap_print 1
 
 //================== HTTP响应的状态信息 ====================
 // 定义HTTP响应的一些状态信息
@@ -32,7 +33,7 @@ int http_conn::st_m_epollfd=-1;
 int http_conn::st_m_usercount=0;
 
 //================== 静态数据 ====================
-const char* root_directory="/home/master/webserver/resources";
+const char* root_directory="resources";
 
 
 
@@ -102,6 +103,8 @@ void http_conn::init_private(){
     m_start_line = 0;
     m_read_index = 0;
     m_write_index=0;
+    bytes_have_send=0;
+    bytes_to_send=0;
 
     m_iv_count=0;
     m_url=NULL;
@@ -170,7 +173,9 @@ void http_conn::unmap()
 {
     if(m_address_mmap)
     {
-        munmap(m_address_mmap,m_file_stat.st_size);
+        int ret=munmap(m_address_mmap,m_file_stat.st_size);
+        if(ret==-1)
+            perror("mmap");
         m_address_mmap=NULL;
     }
 }
@@ -179,9 +184,6 @@ void http_conn::unmap()
 // 非阻塞的写
 bool http_conn::Write()
 {
-    int bytes_have_send=0;
-    int bytes_to_send=m_write_index;
-
     if(bytes_to_send==0){
         // 将要发送的字节为0
         modfd(st_m_epollfd,m_sockfd,EPOLLIN);
@@ -198,10 +200,12 @@ bool http_conn::Write()
             printf("write content=============\n%s\n", (char *)m_iv[1].iov_base);
     #endif
 
+    char * content=(char*)m_iv[1].iov_base;
+    int content_size=m_iv[1].iov_len;
     while (1)
     {
         int ret = writev(m_sockfd, m_iv, m_iv_count);
-        if (ret == -1)
+        if (ret <= -1)
         {
             // 发送失败
             if (errno == EAGAIN)
@@ -216,24 +220,43 @@ bool http_conn::Write()
         else
         {
             // 本次写成功
+            // 维护还需发送字节数和已发送字节数
             bytes_have_send += ret;
-            // ?要写 bytes_to_send -= ret;
+            //bytes_to_send -= ret;
+
+            //分散写第一部分是否写完
+            if(bytes_have_send>=m_write_index)
+            {// 第一部分写完了
+                int offset=bytes_have_send-m_write_index;
+                m_iv[1].iov_len=content_size-offset;
+                m_iv[1].iov_base=content+offset;
+
+                // 禁用第一部分
+                m_iv[0].iov_len=0;
+                m_iv[0].iov_base=NULL;
+            }
+            else
+            {// 第一部分还没写完
+                m_iv[0].iov_base = (char*)m_iv[0].iov_base + ret;
+                m_iv[0].iov_len -= ret;
+            }
+
+            // 发送结束
             if (bytes_have_send >= bytes_to_send)
             {
                 // 发送HTTP响应成功,释放内存
                 unmap();
+                // 方便下次复用
+                modfd(st_m_epollfd, m_sockfd, EPOLLIN);
                 // 是否keep-alive
                 if (m_keepalive)
                 {
                     init_private();
-                    modfd(st_m_epollfd, m_sockfd, EPOLLIN);
                     // 继续接受信息
                     return true;
                 }
                 else
                 {
-                    // 方便下次复用
-                    modfd(st_m_epollfd, m_sockfd, EPOLLIN);
                     // main接收到false后会关闭连接
                     // ?在write里面写close会不会更简单直接
                     return false;
@@ -241,6 +264,8 @@ bool http_conn::Write()
             }
         }
     }
+    unmap();
+    printf("分支错误\n\n\n\n\n");
     return false;   // 以防万一的返回值
 }
 
@@ -264,9 +289,9 @@ void http_conn::process()
     if(!write_ret){
         close_conn();
     }
-    else
-        // ?:close之后时候要执行modfd吗
-        modfd(st_m_epollfd,m_sockfd,EPOLLOUT);
+    
+    // close之后时候要执行modfd
+    modfd(st_m_epollfd,m_sockfd,EPOLLOUT);
 
 }
 
@@ -489,6 +514,9 @@ http_conn::HTTP_CODE http_conn::do_request()
     int fd=open(m_filename,O_RDONLY);
     // 创建内存映射
     m_address_mmap = (char*) mmap(0,m_file_stat.st_size,PROT_READ,MAP_PRIVATE,fd,0);
+    #ifdef mmap_print
+        printf("\nmmap :==================\n %s ,m_address_mmap\n", m_address_mmap);
+    #endif
     close(fd);
 
     return FILE_REQUEST;    // 获取文件成功
@@ -578,8 +606,9 @@ bool http_conn::add_content_length(int content_len)
 //      Content-Type
 bool http_conn::add_content_type()
 {
-    // ?考虑区分是图片 / html/css
-    return add_response("Content-Type: %s\r\n", "text/html");
+    // 虑区分是图片 / html/css
+    char *format_file=strrchr(m_filename,'.');
+    return add_response("Content-Type: %s\r\n", format_file == NULL ? "text/html" : (format_file + 1));
 }
 //      keep_alive / close
 bool http_conn::add_connection()
@@ -625,24 +654,43 @@ bool http_conn::process_write(HTTP_CODE ret){
         if(!add_status_line(status, title)) return false;
         if(!add_headers(m_file_stat.st_size, time(NULL))) return false; // 发送本地时间
         #ifdef check_write_header
-            printf("OK 的 报文头:\n");
-            write(STDOUT_FILENO,m_write_buf,m_write_index);
-        #endif
+            if (check_write_header)
+            {
+                printf("OK 的 报文头:\n");
+                write(STDOUT_FILENO, m_write_buf, m_write_index);
+            }
+        #endif  
         m_iv[0].iov_base=m_write_buf;
         m_iv[0].iov_len=m_write_index;
         m_iv[1].iov_base=m_address_mmap;
         m_iv[1].iov_len=m_file_stat.st_size;
         m_iv_count=2;
+
+        // 维护发送长度
+        bytes_to_send = m_write_index + m_file_stat.st_size;
+
         return true;
     }
     else if(response_info.find(ret)!=response_info.end())
     {// 发送错误信息
         if(!add_status_line(status, title)) return false;
         if(!add_headers(strlen(form), time(NULL))) return false; // 发送本地时间
-        if(!add_content(form)) return false;
-        m_iv[0].iov_base = m_write_buf;
-        m_iv[0].iov_len = m_write_index;
-        m_iv_count = 1;
+        
+        m_iv[0].iov_base=m_write_buf;
+        m_iv[0].iov_len=m_write_index;
+        m_iv[1].iov_base=(char*)form;
+        m_iv[1].iov_len=strlen(form)+1;
+        m_iv_count=2;
+
+        // 若使用add_content
+        //if(!add_content(form)) return false;
+        // m_iv[0].iov_base = m_write_buf;
+        // m_iv[0].iov_len = m_write_index;
+        // m_iv_count = 1;
+
+        // 维护发送长度
+        bytes_to_send = m_iv[0].iov_len + m_iv[1].iov_len;
+
         return true;
     }
     else 
