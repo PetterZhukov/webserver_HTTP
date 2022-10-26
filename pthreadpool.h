@@ -3,11 +3,11 @@
 
 #include <list>
 #include "locker.h"
+#include "questqueue.h"
 
 // #define 控制
 //#define show_create_pool 1
 //#define show_pool_append 1
-
 
 // 模板类 线程池
 template <typename T>
@@ -26,23 +26,12 @@ private:
     void run();
 
 private:
+    // 请求队列
+    questqueue<T> m_questqueue;
     // 线程池大小
     int m_thread_poolsize;
-
-    // 线程池，大小为m_thread_poolsize
+    // 大小为m_thread_poolsize的 线程池
     pthread_t *m_threads;
-
-    // 请求队列
-    std::list<T *> m_questqueue;
-
-    // 请求队列的最大长度
-    int m_max_queue;
-
-    // 保护请求队列的互斥锁
-    mutex m_queuemutex;
-
-    // 是否有任务需要处理
-    sem m_sem_queue;
 
     // 是否结束线程
     bool m_stoppool;
@@ -50,7 +39,7 @@ private:
 
 template <typename T>
 threadpool<T>::threadpool(int poolsize, int maxquest) : 
-    m_thread_poolsize(poolsize), m_max_queue(maxquest), m_stoppool(false)
+    m_thread_poolsize(poolsize), m_stoppool(false),m_questqueue(maxquest)
 {
     // check size
     if (maxquest <= 0 || poolsize <= 0)
@@ -86,34 +75,12 @@ threadpool<T>::~threadpool()
 {
     m_stoppool = true;
     delete[] m_threads;
-    // 以防万一,delete questqueue中的每一个值
-    for(auto it=m_questqueue.begin();it!=m_questqueue.end();it++)
-        delete *it;
 }
 
 template <typename T>
 bool threadpool<T>::append(T *quest)
 {
-    #ifdef show_pool_append
-        printf("append begin :: list.size: %d \n",(int)(m_questqueue.size()));
-    #endif
-    // 操作请求队列加锁
-    m_queuemutex.lock();
-    if (m_questqueue.size() >= m_max_queue)
-    {
-        return false;
-    }
-
-    // 添加quest，并且更新
-    m_questqueue.push_back(quest);
-    m_sem_queue.post();
-
-    m_queuemutex.unlock();
-
-    #ifdef show_pool_append
-        printf("append end :: list.size: %d \n",(int)(m_questqueue.size()));
-    #endif
-    return true;
+    return m_questqueue.push(quest);
 }
 
 template <typename T>
@@ -128,23 +95,12 @@ void threadpool<T>::run()
 {
     while (!m_stoppool)
     {
-        // 上锁
-        m_sem_queue.wait();
-        m_queuemutex.lock();
-        if (m_questqueue.empty())
-        {
-            m_queuemutex.unlock();
-            continue;
-        }
-        // 取出
-        T *quest = m_questqueue.front();
-        m_questqueue.pop_front();
-        // 解锁
-        m_queuemutex.unlock();
+        // 从请求队列中阻塞取出待处理元素
+        T* quest=m_questqueue.pop();
 
-        // 调用quest
         // 检查是否为空
         if (quest!=NULL)
+            // 调用quest
             quest->process();
     }
 }
