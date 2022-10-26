@@ -1,5 +1,6 @@
 #include "http_conn.h"
 
+
 //#define patse_message 0
 // #define check_write_header 0
 // #define check_write_content 1
@@ -8,26 +9,7 @@
 // #define mmap_print 1
 // #define print_writev_result 1
 
-//================== HTTP响应的状态信息 ====================
-// 定义HTTP响应的一些状态信息
-const char* ok_200_title = "OK";
-const char* error_400_title = "Bad Request";
-const char* error_400_form = "Your request has bad syntax or is inherently impossible to satisfy.\n";
-const char* error_403_title = "Forbidden";
-const char* error_403_form = "You do not have permission to get file from this server.\n";
-const char* error_404_title = "Not Found";
-const char* error_404_form = "The requested file was not found on this server.\n";
-const char* error_500_title = "Internal Error";
-const char* error_500_form = "There was an unusual problem serving the requested file.\n";
 
-// 用hashmap来降低代码量
-unordered_map<int, tuple<int, const char *, const char *>> response_info{
-    {http_conn::FILE_REQUEST, {200, ok_200_title, NULL}},
-    {http_conn::BAD_REQUEST, {400, error_400_title, error_400_form}},
-    {http_conn::FORBIDDEN_REQUEST, {403, error_403_title, error_403_form}},
-    {http_conn::NO_RESOURCE, {404, error_404_title, error_404_form}},
-    {http_conn::INTERNAL_ERROR, {500, error_500_title, error_500_form}},
-};
 
 //================== 初始化 ====================
 int http_conn::st_m_epollfd=-1;
@@ -36,48 +18,6 @@ int http_conn::st_m_usercount=0;
 //================== 静态数据 ====================
 const char* root_directory="resources";
 
-
-
-// 设置文件描述符非阻塞
-void setnonblocking(int fd)
-{
-    int old_flag=fcntl(fd,F_GETFL);
-    int new_flag=old_flag | O_NONBLOCK;
-    fcntl(fd,F_SETFL,new_flag);
-}
-
-// 添加需要监听的文件描述符到epoll
-void addfd(int epollfd, int fd, bool one_shot)
-{
-    epoll_event event;
-    event.data.fd=fd;
-    // EPOLLRDHUP判断是否挂起
-    // event.events=EPOLLIN | EPOLLRDHUP;
-    event.events=EPOLLIN  | EPOLLRDHUP;
-    if(one_shot) 
-        event.events |=EPOLLONESHOT;
-    
-    epoll_ctl(epollfd,EPOLL_CTL_ADD,fd,&event);
-
-    // 设置文件描述符非阻塞
-    setnonblocking(fd);
-}
-
-// 从epoll中删除文件描述符,并close文件描述符
-void removefd(int epollfd, int fd)
-{
-    epoll_ctl(epollfd,EPOLL_CTL_DEL,fd,NULL);
-    close(fd);
-}
-
-// 修改文件描述符,重置socket上EPOLLONESHOT事件,确保下次可读时被触发
-void modfd(int epollfd,int fd,int ev)
-{
-    epoll_event event;
-    event.data.fd=fd;
-    event.events=ev | EPOLLONESHOT | EPOLLRDHUP;
-    epoll_ctl(epollfd,EPOLL_CTL_MOD,fd,&event);
-}
 
 //初始化新接收的连接
 void http_conn::init(int sockfd,const sockaddr_in &addr)
@@ -94,18 +34,18 @@ void http_conn::init(int sockfd,const sockaddr_in &addr)
     addfd(st_m_epollfd, m_sockfd, true);
     st_m_usercount++;
 
-    init_private();
+    clear();
 }
 
 // 初始化连接
-void http_conn::init_private(){
+void http_conn::clear(){
     m_check_state = CHECK_STATE_REQUESTLINE;
     m_checked_index = 0;
     m_start_line = 0;
     m_read_index = 0;
     m_write_index=0;
-    bytes_have_send=0;
     bytes_to_send=0;
+    bytes_have_send=0;
 
     m_iv_count=0;
     m_url=NULL;
@@ -123,7 +63,6 @@ void http_conn::init_private(){
     bzero(m_write_buf,WRITE_BUFFER_SIZE);
     bzero(&m_address,sizeof(m_address));
     bzero(m_filename,FILENAME_MAXLEN);
-
 }
 
 //关闭连接
@@ -137,35 +76,7 @@ void http_conn::close_conn()
     }
 }
 
-// 非阻塞的读
-// 循环读取
-bool http_conn::read()
-{
-    // 缓冲已满
-    if(m_read_index >= READ_BUFFER_SIZE){
-        return false;
-    }
-    // 读取字节
-    int bytes_read=0;
-    while(true)
-    {
-        bytes_read=recv(m_sockfd,m_read_buf+m_read_index,READ_BUFFER_SIZE-m_read_index,0);
-        if(bytes_read==-1){
-            if(errno==EAGAIN || errno==EWOULDBLOCK)
-                break;
-            else
-                return false;
-        }
-        else if(bytes_read==0){
-            return false;
-        }
-        m_read_index+=bytes_read;
-    }
-    #ifdef  show_read_data
-        printf("\n读取到的数据 : \n       %s\n",m_read_buf);
-    #endif
-    return true;
-}
+
 
 // 对内存映射区进行释放
 void http_conn::unmap()
@@ -179,73 +90,7 @@ void http_conn::unmap()
     }
 }
 
-// 非阻塞的写
-bool http_conn::Write()
-{
-    if(bytes_to_send==0){
-        // 将要发送的字节为0
-        modfd(st_m_epollfd,m_sockfd,EPOLLIN);
-        init_private();
-        return true;
-    }
-    #ifdef check_write_header
-        printf("write header=============\n%s\n",(char *)m_iv[0].iov_base);
-    #endif
-    #ifdef check_write_content
-        if (m_iv_count > 1) printf("write content=============\n%s\n", (char *)m_iv[1].iov_base);
-    #endif
-    while (1)
-    {
-        int ret = writev(m_sockfd, m_iv, m_iv_count);
-        if (ret <= -1)
-        {
-            // 发送失败
-            if (errno == EAGAIN)
-            {// 重试
-                modfd(st_m_epollfd, m_sockfd, EPOLLOUT);
-                return true;
-            }
-            unmap(); // 释放内存
-            return false;
-        }
-        // 本次写成功
-        // 维护还需发送字节数和已发送字节数
-        bytes_have_send += ret;
-        //bytes_to_send -= ret;
 
-        //分散写第一部分是否写完
-        if (bytes_have_send >= m_iv[0].iov_len)
-        { // 第一部分写完了
-            m_iv[1].iov_base = m_address_mmap + (bytes_have_send - m_write_index);
-            m_iv[1].iov_len = bytes_to_send-bytes_have_send;
-            m_iv[0].iov_len = 0;
-        }
-        else
-        { // 第一部分还没写完
-            m_iv[0].iov_base = (char*)(m_iv[0].iov_base)+ret;
-            m_iv[0].iov_len -= ret;
-        }
-
-        // 发送结束
-        if (bytes_to_send <=bytes_have_send)
-        {   // 发送HTTP响应成功,释放内存
-            unmap();
-            // 方便下次复用
-            modfd(st_m_epollfd, m_sockfd, EPOLLIN);
-            // 是否keep-alive
-            if (m_keepalive)
-            {
-                init_private();
-                // 继续接受信息
-                return true;
-            }
-            else
-            {
-                return false;
-            }
-        }
-    }
-}
 
 // 处理客户端的请求
 // 业务逻辑

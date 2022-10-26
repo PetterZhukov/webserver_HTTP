@@ -20,54 +20,18 @@
 #include <algorithm>
 #include <unordered_map>
 #include <tuple>
-
+#include "static_value.h"
+#include "socket_control.h"
 
 using std::unordered_map;
 using std::tuple;
 
-
-
-class http_conn
+class http_conn : public base
 {
 public:
     //======================== static ============================
     static int st_m_epollfd;            // epoll fd
     static int st_m_usercount;          // 用户数量
-    static const int READ_BUFFER_SIZE=2048;     // 读缓冲区的大小
-    static const int WRITE_BUFFER_SIZE=1024;    // 写缓冲区的大小
-    static const int FILENAME_MAXLEN=200;       // 文件名的最大长度
-    
-    //======================== 状态值 ============================
-    // HTTP请求方法，这里只支持GET
-    enum METHOD {GET = 0, POST, HEAD, PUT, DELETE, TRACE, OPTIONS, CONNECT};
-    
-    /*
-        解析客户端请求时，主状态机的状态
-        CHECK_STATE_REQUESTLINE   : 当前正在分析请求行
-        CHECK_STATE_HEADER        : 当前正在分析头部字段
-        CHECK_STATE_CONTENT       : 当前正在解析请求体
-    */
-    enum CHECK_STATE { CHECK_STATE_REQUESTLINE = 0, CHECK_STATE_HEADER, CHECK_STATE_CONTENT };
-    
-    /*
-        服务器处理HTTP请求的可能结果，报文解析的结果
-        NO_REQUEST          :   请求不完整，需要继续读取客户数据
-        GET_REQUEST         :   表示获得了一个完成的客户请求
-        BAD_REQUEST         :   表示客户请求语法错误
-        NO_RESOURCE         :   表示服务器没有资源
-        FORBIDDEN_REQUEST   :   表示客户对资源没有足够的访问权限
-        FILE_REQUEST        :   文件请求,获取文件成功
-        INTERNAL_ERROR      :   表示服务器内部错误
-        CLOSED_CONNECTION   :   表示客户端已经关闭连接了
-    */
-    enum HTTP_CODE { NO_REQUEST, GET_REQUEST, BAD_REQUEST, NO_RESOURCE, FORBIDDEN_REQUEST, FILE_REQUEST, INTERNAL_ERROR, CLOSED_CONNECTION };
-    /*
-        从状态机的三种可能状态，即行的读取状态，分别表示
-        LINE_OK     :   读取到一个完整的行
-        LINE_BAD    :   行出错
-        LINE_OPEN   :   行数据尚且不完整
-    */
-    enum LINE_STATUS { LINE_OK = 0, LINE_BAD, LINE_OPEN };
 
 public:
     http_conn() {}
@@ -79,12 +43,31 @@ public:
     void init(int sockfd,const sockaddr_in &addr); 
     // 关闭这个对象的连接
     void close_conn();   
-    // 非阻塞的读
-    bool read();
     // 非阻塞的写
     bool Write();
 
- 
+    //================== 与epoll的交互 ====================
+    // 初始化基本的数值
+    void clear();
+    // 释放内存映射的空间
+    void unmap();
+    //================== get ====================
+    int get_sockfd() { return m_sockfd; }                 // 获取sockfd
+    int get_read_index() { return m_read_index; }         // 获取m_read_index
+    int get_write_index() { return m_write_index; }       // 获取m_write_index
+    char *get_read_buf() { return m_read_buf; }           // 获取 m_read_buf
+    char *get_write_buf() { return m_write_buf; }         // 获取 m_write_buf
+    int get_bytes_to_send() { return bytes_to_send; }     // 获取bytes_to_send
+    int get_bytes_have_send() { return bytes_have_send; } // 获取bytes_have_send
+    iovec *get_iv() { return m_iv; }                      // 获取struct iovec[]
+    int get_iv_count() { return m_iv_count; }             // 获取iv_count
+    char *get_address_mmap() { return m_address_mmap; }   // 获取映射地址
+    bool is_keepalive() { return m_keepalive; }           // 是否保持连接
+    //================== set ====================
+    void set_read_index(int index) { m_read_index = index; }         // 设置m_read_index
+    void set_bytes_to_send(int bytes) { bytes_to_send = bytes; }     // 设置bytes_to_send
+    void set_bytes_have_send(int bytes) { bytes_have_send = bytes; } // 设置bytes_have_send
+
 private:
     //================== socket通信的值 ====================
     int m_sockfd;           //该HTTP连接的socket
@@ -104,10 +87,10 @@ private:
 
     // writev成员
     struct iovec m_iv[2]; // 存储分散写的内容,0为报文头,1为报文内容
-    int m_iv_count;     // writev数量
+    int m_iv_count;       // writev数量
     // 记录发送情况
-    int bytes_to_send;              // 将要发送的数据的字节数
-    int bytes_have_send;            // 已经发送的字节数
+    int bytes_to_send;   // 将要发送的数据的字节数
+    int bytes_have_send; // 已经发送的字节数
 
     //================== 报文解析结果 ========================
     //================== 请求行分析结果 ====================
@@ -122,10 +105,9 @@ private:
     char m_filename[FILENAME_MAX]; // 客户请求的目标文件的完整目录,其内容为 root_directory+m_url
     struct stat m_file_stat;       // 目标文件的状态
     char *m_address_mmap;          // 客户请求的数据被mmap到的位置
-    void unmap();                  // 释放内存映射的空间
+    
 
-    // 初始化基本的数值
-    void init_private();
+    
     //================== 状态机 ====================
     CHECK_STATE m_check_state;  // 主状态机当前所处的位置
     //============== 主状态机 ===================
