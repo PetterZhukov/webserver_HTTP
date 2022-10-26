@@ -149,8 +149,6 @@ private:
     bool add_date(time_t t);    // 发送时间
     bool add_blank_line();      // 空白结束行
     bool add_content(const char *content); // 添加响应正文
-    
-    
 };
 
 
