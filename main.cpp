@@ -64,7 +64,7 @@ int main(int argc,char* argv[])
         pool=new threadpool<http_conn>;
     }
     catch(const char* msg){
-        printf("error creat thread\n");
+        printf("error:%s\n",msg);
         
         exit(-1);
     }

@@ -14,7 +14,7 @@ private:
 public:
     mutex(){
         if (pthread_mutex_init(&m_mutex, NULL) != 0){
-            throw std::exception();
+            throw "初始化mutex错误";
         }
     }
     ~mutex(){
@@ -39,7 +39,7 @@ public:
     {
         if (pthread_cond_init(&m_cond, NULL) != 0)
         {
-            throw std::exception();
+            throw "初始化条件变量错误";
         }
     }
     ~cond()
@@ -73,14 +73,14 @@ public:
     {
         if (sem_init(&m_sem, 0, 0) != 0)
         {
-            throw std::exception();
+            throw "初始化信号量错误";
         }
     }
     sem(int num)
     {
         if (sem_init(&m_sem, 0, num) != 0)
         {
-            throw std::exception();
+            throw "初始化信号量错误";
         }
     }
     ~sem()

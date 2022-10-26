@@ -31,7 +31,7 @@ template <typename T>
 questqueue<T>::questqueue(int max_queue) : m_max_queue(max_queue)
 {
     if (max_queue <= 0)
-        throw std::exception();
+        throw "队列的大小错误";
 }
 
 template <typename T>
@@ -41,6 +41,7 @@ questqueue<T>::~questqueue()
         delete *it;
 }
 
+// 阻塞式填入元素
 template <typename T>
 bool questqueue<T>::push(T *quest)
 {
@@ -59,6 +60,7 @@ bool questqueue<T>::push(T *quest)
     return true;
 }
 
+// 阻塞式取元素
 template <typename T>
 T *questqueue<T>::pop()
 {

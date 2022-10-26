@@ -42,8 +42,8 @@ threadpool<T>::threadpool(int poolsize, int maxquest) :
     m_thread_poolsize(poolsize), m_stoppool(false),m_questqueue(maxquest)
 {
     // check size
-    if (maxquest <= 0 || poolsize <= 0)
-        throw std::exception();
+    if (poolsize <= 0)
+        throw "线程池的大小错误";
 
     m_threads = new pthread_t[m_thread_poolsize];
 
@@ -56,7 +56,7 @@ threadpool<T>::threadpool(int poolsize, int maxquest) :
         if (pthread_create(m_threads + i, NULL, worker, this) != 0)
         {
             delete[] m_threads;
-            throw std::exception();
+            throw "创建子线程时错误";
         }
     }
     for (int i = 0; i < m_thread_poolsize; i++)
@@ -64,7 +64,7 @@ threadpool<T>::threadpool(int poolsize, int maxquest) :
         if (pthread_detach(m_threads[i]) != 0)
         {
             delete[] m_threads;
-            throw std::exception();
+            throw "子线程分离时错误";
         }
     }
     printf("thread pool ready \n");
