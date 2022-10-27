@@ -93,9 +93,9 @@ void http_conn::process()
 {
     // 解析HTTP请求
     HTTP_CODE read_ret = process_read();
-#ifdef process_read_result
-    printf("process_read result : %d\n", read_ret);
-#endif
+    #ifdef process_read_result
+        printf("process_read result : %d\n", read_ret);
+    #endif
     if(read_ret==NO_REQUEST)
     {   // 读的没有问题,则修改fd,让其再次使用
         modfd(st_m_epollfd,m_sockfd,EPOLLIN);
@@ -402,7 +402,6 @@ bool http_conn::add_headers(int content_len,time_t time)
     if(!add_content_type()) return false;
     if(!add_connection()) return false;
     if(!add_date(time)) return false;
-    // if(!) return false;
     if(!add_blank_line()) return false;
     return true;
 }
