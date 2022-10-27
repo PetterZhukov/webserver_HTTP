@@ -48,6 +48,7 @@ void http_conn::clear(){
     bytes_have_send=0;
 
     m_iv_count=0;
+    m_iv[0].iov_len=m_iv[1].iov_len=0;
     m_url=NULL;
     m_method=GET;
     m_version=0;
@@ -58,10 +59,11 @@ void http_conn::clear(){
     m_content_length=0;
     m_address_mmap=NULL;
     
-
+    unmap();
     bzero(m_read_buf,READ_BUFFER_SIZE);
     bzero(m_write_buf,WRITE_BUFFER_SIZE);
     bzero(&m_address,sizeof(m_address));
+    bzero(m_iv,sizeof(m_iv));
     bzero(m_filename,FILENAME_MAXLEN);
 }
 
@@ -86,21 +88,19 @@ void http_conn::unmap()
         int ret=munmap(m_address_mmap,m_file_stat.st_size);
         if(ret==-1)
             perror("mmap");
-        m_address_mmap=NULL;
+        m_address_mmap = NULL;
     }
 }
-
-
 
 // 处理客户端的请求
 // 业务逻辑
 void http_conn::process()
 {
     // 解析HTTP请求
-    HTTP_CODE read_ret=process_read();
-    #ifdef  process_read_result
-        printf("process_read result : %d\n",read_ret);
-    #endif
+    HTTP_CODE read_ret = process_read();
+#ifdef process_read_result
+    printf("process_read result : %d\n", read_ret);
+#endif
     if(read_ret==NO_REQUEST)
     {   // 读的没有问题,则修改fd,让其再次使用
         modfd(st_m_epollfd,m_sockfd,EPOLLIN);
@@ -115,7 +115,6 @@ void http_conn::process()
     
     // close之后时候要执行modfd
     modfd(st_m_epollfd,m_sockfd,EPOLLOUT);
-
 }
 
 //============== 主状态机 ===================

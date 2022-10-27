@@ -98,14 +98,13 @@ bool epoll_class::Read(http_conn &conn)
 // 非阻塞的写
 bool epoll_class::Write(http_conn &conn)
 {
-    int m_sockfd = conn.get_sockfd();
+    const int m_sockfd = conn.get_sockfd();
     int bytes_to_send = conn.get_bytes_to_send();
     int bytes_have_send = conn.get_bytes_have_send();
     const int m_write_index = conn.get_write_index();
     char *m_write_buf = conn.get_write_buf();
-    char *m_address_mmap = conn.get_address_mmap();
     iovec *m_iv = conn.get_iv();
-    int m_iv_count = conn.get_iv_count();
+    const int m_iv_count = conn.get_iv_count();
 
     if(bytes_to_send==0){
         // 将要发送的字节为0
@@ -116,6 +115,8 @@ bool epoll_class::Write(http_conn &conn)
     while (1)
     {
         int ret = writev(m_sockfd, m_iv, m_iv_count);
+        // printf("iovec %ld %ld,send=%d,begin: %u %u\n",m_iv[0].iov_len,m_iv[1].iov_len,ret,\
+        //     ((char*)m_iv[0].iov_base),((char*)m_iv[1].iov_base));
         if (ret <= -1)
         {
             // 发送失败
@@ -132,24 +133,23 @@ bool epoll_class::Write(http_conn &conn)
         // 本次写成功
         // 维护还需发送字节数和已发送字节数
         bytes_have_send += ret;
-        //bytes_to_send -= ret;
 
         //分散写第一部分是否写完
-        if (bytes_have_send >= m_iv[0].iov_len)
+        if (ret >= m_iv[0].iov_len)
         { // 第一部分写完了
-            m_iv[1].iov_base = m_address_mmap + (bytes_have_send - m_write_index);
-            m_iv[1].iov_len = bytes_to_send-bytes_have_send;
+            m_iv[1].iov_base = (char *)m_iv[1].iov_base + (ret - m_iv[0].iov_len);
+            m_iv[1].iov_len -= (ret - m_iv[0].iov_len);
             m_iv[0].iov_len = 0;
         }
         else
         { // 第一部分还没写完
-            m_iv[0].iov_base = (char*)(m_iv[0].iov_base)+ret;
+            m_iv[0].iov_base = (char *)(m_iv[0].iov_base) + ret;
             m_iv[0].iov_len -= ret;
         }
 
         // 发送结束
-        if (bytes_to_send <=bytes_have_send)
-        {   // 发送HTTP响应成功,释放内存
+        if (bytes_to_send <= bytes_have_send)
+        { // 发送HTTP响应成功,释放内存
             conn.unmap();
             // 方便下次复用
             modfd(epollfd, m_sockfd, EPOLLIN);
