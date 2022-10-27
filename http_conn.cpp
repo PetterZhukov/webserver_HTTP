@@ -9,15 +9,12 @@
 // #define mmap_print 1
 // #define print_writev_result 1
 
-
-
 //================== 初始化 ====================
 int http_conn::st_m_epollfd=-1;
 int http_conn::st_m_usercount=0;
 
 //================== 静态数据 ====================
 const char* root_directory="resources";
-
 
 //初始化新接收的连接
 void http_conn::init(int sockfd,const sockaddr_in &addr)
@@ -77,8 +74,6 @@ void http_conn::close_conn()
         st_m_usercount--; // 维护cnt
     }
 }
-
-
 
 // 对内存映射区进行释放
 void http_conn::unmap()
@@ -189,7 +184,6 @@ http_conn::HTTP_CODE http_conn::parse_request_line(char *text)
 
     /*GET /index.html HTTP/1.1
          ^                    */
-
     // method
     *(m_url++) = '\0'; // GET\0/index.html HTTP/1.1
     char *method=text;
@@ -199,7 +193,6 @@ http_conn::HTTP_CODE http_conn::parse_request_line(char *text)
     else{
         return BAD_REQUEST;
     }
-
     //   GET\0
     //   /index.html HTTP/1.1
     // version
@@ -273,14 +266,12 @@ http_conn::HTTP_CODE http_conn::parse_headers(char *text)
     }
     else if(strncasecmp( text, "Content-Length:", 15 )==0){
         text+=15;   // 去除key
-        text+=strcspn(text," \t");   // 去除开头的空格和\t
-        
+        text+=strcspn(text," \t");   // 去除开头的空格和\t  
         m_content_length=atol(text);
     }
     else if ( strncasecmp( text, "Host:", 5 ) == 0 ){
         text+=5;   // 去除key
-        text+=strcspn(text," \t");   // 去除开头的空格和\t
-        
+        text+=strcspn(text," \t");   // 去除开头的空格和\t 
         m_host=text;
     }
     else{
@@ -303,9 +294,7 @@ http_conn::HTTP_CODE http_conn::parse_content_complete(char *text)
     return NO_REQUEST;
 }
 
-/**
- * 在分析完成以后进行具体的处理
- */ 
+// 在分析完成以后进行具体的处理
 http_conn::HTTP_CODE http_conn::do_request()
 {
     // 更新
@@ -331,8 +320,7 @@ http_conn::HTTP_CODE http_conn::do_request()
         return BAD_REQUEST;
     }
 
-    // 对文件操作
-    // 只读方式打开
+    // 对文件操作 只读方式打开
     int fd=open(m_filename,O_RDONLY);
     // 创建内存映射
     m_address_mmap = (char*) mmap(0,m_file_stat.st_size,PROT_READ,MAP_PRIVATE,fd,0);
@@ -380,7 +368,6 @@ http_conn::LINE_STATUS http_conn::parse_line()
     }
     return LINE_OPEN;
 }
-
 
 //================== 写入部分 ====================
 // 往写缓冲区中写数据
@@ -476,8 +463,7 @@ bool http_conn::process_write(HTTP_CODE ret){
         if(!add_status_line(status, title)) return false;
         if(!add_headers(m_file_stat.st_size, time(NULL))) return false; // 发送本地时间
         #ifdef check_write_header
-            if (check_write_header)
-            {
+            if (check_write_header){
                 printf("OK 的 报文头:\n");
                 write(STDOUT_FILENO, m_write_buf, m_write_index);
             }
@@ -498,26 +484,24 @@ bool http_conn::process_write(HTTP_CODE ret){
         if(!add_status_line(status, title)) return false;
         if(!add_headers(strlen(form), time(NULL))) return false; // 发送本地时间
         
-        // m_iv[0].iov_base=m_write_buf;
-        // m_iv[0].iov_len=m_write_index;
-        // m_iv[1].iov_base=(char*)form;
-        // m_iv[1].iov_len=strlen(form)+1;
-        // m_iv_count=2;
-        // // 维护发送长度
-        // bytes_to_send = m_iv[0].iov_len + m_iv[1].iov_len;
-
-        //若使用add_content
-        if(!add_content(form)) return false;
-        m_iv[0].iov_base = m_write_buf;
-        m_iv[0].iov_len = m_write_index;
-        m_iv_count = 1;
+        m_iv[0].iov_base=m_write_buf;
+        m_iv[0].iov_len=m_write_index;
+        m_iv[1].iov_base=(char*)form;
+        m_iv[1].iov_len=strlen(form)+1;
+        m_iv_count=2;
         // 维护发送长度
-        bytes_to_send = m_write_index;
+        bytes_to_send = m_iv[0].iov_len + m_iv[1].iov_len;
 
-        
+        // 若使用add_content
+        // if (!add_content(form)) return false;
+        // m_iv[0].iov_base = m_write_buf;
+        // m_iv[0].iov_len = m_write_index;
+        // m_iv_count = 1;
+        // // 维护发送长度
+        // bytes_to_send = m_write_index;
 
         return true;
     }
-    else 
+    else
         return false;
 }
