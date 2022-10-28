@@ -93,9 +93,9 @@ void http_conn::process()
 {
     // 解析HTTP请求
     HTTP_CODE read_ret = process_read();
-#ifdef process_read_result
-    printf("process_read result : %d\n", read_ret);
-#endif
+    #ifdef process_read_result
+        printf("process_read result : %d\n", read_ret);
+    #endif
     if (read_ret == NO_REQUEST)
     { // 读的没有问题,则修改fd,让其再次使用
         modfd(st_m_epollfd, m_sockfd, EPOLLIN);
@@ -125,9 +125,9 @@ http_conn::HTTP_CODE http_conn::process_read()
     { // 解析到了一行完整的数据  或者解析到了请求体,也是完整的数据
         // 获取一行数据
         text = get_line();
-#ifdef patse_message
-        printf("\n即将解析的数据: %s\n", text);
-#endif
+        #ifdef patse_message
+            printf("\n即将解析的数据: %s\n", text);
+        #endif
         m_start_line = m_checked_index;
         // printf("got 1 http line : %s\n",text);
 
@@ -180,46 +180,35 @@ http_conn::HTTP_CODE http_conn::process_read()
 // 解析HTTP请求行,获取请求方法 ,目标URL,HTTP版本
 http_conn::HTTP_CODE http_conn::parse_request_line(char *text)
 {
+
     // 1.解析请求行
     // GET /index.html HTTP/1.1
-    // 对上文进行解析
-
-    // url
-    m_url = strpbrk(text, " \t");
-    if (!m_url)
-        return BAD_REQUEST;
-
-    /*GET /index.html HTTP/1.1
-         ^                    */
+    // 1.1 请求方法 URL 协议版本
+    // 初始化以及填入\0进行分隔
+    char *index=text;
     // method
-    *(m_url++) = '\0'; // GET\0/index.html HTTP/1.1
     char *method = text;
+    // m_url
+    index=strpbrk(index, " \t");
+    if (!index) return BAD_REQUEST;
+    *(index++) = '\0';  // 填充以及移动
+    m_url=index;
+    // m_version
+    index=strpbrk(index, " \t");
+    if (!index) return BAD_REQUEST;
+    *(index++) = '\0'; // 填充以及移动
+    m_version=index;
+
+    // 1.2 进行分析判断和进一步处理
+    // method,只允许GET
     if (strcasecmp(method, "GET") == 0){
         m_method = GET;
     }
     else{
         return BAD_REQUEST;
     }
-    //   GET\0
-    //   /index.html HTTP/1.1
-    // version
-    m_version = strpbrk(m_url, " \t");
-    if (!m_version)
-        return BAD_REQUEST;
-
-    *(m_version++) = '\0';
-    //   GET\0
-    //   /index.html\0
-    //   HTTP/1.1
-    // 版本分析
-    if (strcasecmp(m_version, "HTTP/1.1") != 0)
-        return BAD_REQUEST;
-
     // url分析
-    /**
-     * 这样的,需要去掉 http:// 这7个字符
-     * http://192.168.110.129:10000/index.html
-     */
+    // 比如http://192.168.110.129:10000/index.html 需要去掉 http:// 这7个字符 
     if (strncasecmp(m_url, "http://", 7) == 0)
     {
         m_url += 7;
@@ -228,11 +217,15 @@ http_conn::HTTP_CODE http_conn::parse_request_line(char *text)
     }
     if (!m_url || m_url[0] != '/')
         return BAD_REQUEST;
+    // version分析
+    if (strcasecmp(m_version, "HTTP/1.1") != 0)
+        return BAD_REQUEST;
 
-    // 2.更新检测状态,检测完请求行以后需要检测头部
+
+    // 2.更新检测状态,检测完请求行以后需要检测请求头
     m_check_state = CHECK_STATE_HEADER;
 
-// 3.return
+    // 3.return
     #ifdef patse_message
         printf("请求头解析成功\n    url:%s,version:%s,method:%s\n", m_url, m_version, method);
     #endif
