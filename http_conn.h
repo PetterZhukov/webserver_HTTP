@@ -58,15 +58,12 @@ public:
     char *get_read_buf() { return m_read_buf; }           // 获取 m_read_buf
     char *get_write_buf() { return m_write_buf; }         // 获取 m_write_buf
     int get_bytes_to_send() { return bytes_to_send; }     // 获取bytes_to_send
-    int get_bytes_have_send() { return bytes_have_send; } // 获取bytes_have_send
     iovec *get_iv() { return m_iv; }                      // 获取struct iovec[]
     int get_iv_count() { return m_iv_count; }             // 获取iv_count
     char *get_address_mmap() { return m_address_mmap; }   // 获取映射地址
     bool is_keepalive() { return m_keepalive; }           // 是否保持连接
     //================== set ====================
     void set_read_index(int index) { m_read_index = index; }         // 设置m_read_index
-    void set_bytes_to_send(int bytes) { bytes_to_send = bytes; }     // 设置bytes_to_send
-    void set_bytes_have_send(int bytes) { bytes_have_send = bytes; } // 设置bytes_have_send
 
 private:
     //================== socket通信的值 ====================
@@ -90,7 +87,6 @@ private:
     int m_iv_count;       // writev数量
     // 记录发送情况
     int bytes_to_send;   // 将要发送的数据的字节数
-    int bytes_have_send; // 已经发送的字节数
 
     //================== 报文解析结果 ========================
     //================== 请求行分析结果 ====================

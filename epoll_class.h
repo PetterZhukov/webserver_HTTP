@@ -43,8 +43,6 @@ private:
     epoll_event events[MAX_EVENT_NUMBER];
     int epollfd;
 
-
-
     //================== function ====================
     // 添加信号捕捉
     void addsig(int sig, void(handler)(int));
@@ -52,7 +50,6 @@ private:
     bool Read(http_conn &conn);
     // 非阻塞的读
     bool Write(http_conn &conn);
-    bool Write();
 };
 // 添加信号捕捉
 void epoll_class::addsig(int sig, void(handler)(int))
@@ -99,8 +96,7 @@ bool epoll_class::Read(http_conn &conn)
 bool epoll_class::Write(http_conn &conn)
 {
     const int m_sockfd = conn.get_sockfd();
-    int bytes_to_send = conn.get_bytes_to_send();
-    int bytes_have_send = conn.get_bytes_have_send();
+    const int bytes_to_send = conn.get_bytes_to_send();
     const int m_write_index = conn.get_write_index();
     char *m_write_buf = conn.get_write_buf();
     iovec *m_iv = conn.get_iv();
@@ -115,16 +111,12 @@ bool epoll_class::Write(http_conn &conn)
     while (1)
     {
         int ret = writev(m_sockfd, m_iv, m_iv_count);
-        // printf("iovec %ld %ld,send=%d,begin: %u %u\n",m_iv[0].iov_len,m_iv[1].iov_len,ret,\
-        //     ((char*)m_iv[0].iov_base),((char*)m_iv[1].iov_base));
         if (ret <= -1)
         {
             // 发送失败
             if (errno == EAGAIN)
             {// 重试
                 modfd(epollfd, m_sockfd, EPOLLOUT);
-                conn.set_bytes_to_send(bytes_to_send);
-                conn.set_bytes_have_send(bytes_have_send);
                 return true;
             }
             conn.unmap(); // 释放内存
@@ -132,7 +124,6 @@ bool epoll_class::Write(http_conn &conn)
         }
         // 本次写成功
         // 维护还需发送字节数和已发送字节数
-        bytes_have_send += ret;
 
         //分散写第一部分是否写完
         if (ret >= m_iv[0].iov_len)
@@ -148,7 +139,7 @@ bool epoll_class::Write(http_conn &conn)
         }
 
         // 发送结束
-        if (bytes_to_send <= bytes_have_send)
+        if (m_iv[1].iov_len<=0)
         { // 发送HTTP响应成功,释放内存
             conn.unmap();
             // 方便下次复用
@@ -255,7 +246,7 @@ void epoll_class::run()
                 // 判断文件描述符表是否满了
                 if(http_conn::st_m_usercount>=MAX_FD)
                 {
-                    // 回写数据:服务器正忙
+                    // ?回写数据:服务器正忙
                     // 连接满了
                     close(connfd);
                     continue;
@@ -295,13 +286,11 @@ void epoll_class::run()
 }
 epoll_class::~epoll_class()
 {
-        // 结束后close
+    // 结束后close
     close(epollfd);
     close(listenfd);
-    delete [] users;
+    delete[] users;
     delete pool;
 }
-
-
 
 #endif

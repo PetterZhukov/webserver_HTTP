@@ -42,7 +42,6 @@ void http_conn::clear(){
     m_read_index = 0;
     m_write_index=0;
     bytes_to_send=0;
-    bytes_have_send=0;
 
     m_iv_count=0;
     m_iv[0].iov_len=m_iv[1].iov_len=0;
