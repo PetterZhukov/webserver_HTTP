@@ -1,7 +1,5 @@
 #include "socket_control.h"
 
-
-
 // 设置文件描述符非阻塞
 void setnonblocking(int fd)
 {
