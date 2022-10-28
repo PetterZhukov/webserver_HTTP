@@ -70,6 +70,7 @@ void http_conn::close_conn()
     {
         removefd(st_m_epollfd, m_sockfd);
         m_sockfd = -1;    // 重置fd
+        clear();
         st_m_usercount--; // 维护cnt
     }
 }

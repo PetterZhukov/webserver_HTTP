@@ -97,8 +97,6 @@ bool epoll_class::Write(http_conn &conn)
 {
     const int m_sockfd = conn.get_sockfd();
     const int bytes_to_send = conn.get_bytes_to_send();
-    const int m_write_index = conn.get_write_index();
-    char *m_write_buf = conn.get_write_buf();
     iovec *m_iv = conn.get_iv();
     const int m_iv_count = conn.get_iv_count();
 
@@ -108,7 +106,7 @@ bool epoll_class::Write(http_conn &conn)
         conn.clear();
         return true;
     }
-    while (1)
+    while (true)
     {
         int ret = writev(m_sockfd, m_iv, m_iv_count);
         if (ret <= -1)
@@ -119,7 +117,6 @@ bool epoll_class::Write(http_conn &conn)
                 modfd(epollfd, m_sockfd, EPOLLOUT);
                 return true;
             }
-            conn.unmap(); // 释放内存
             return false;
         }
         // 本次写成功
@@ -141,8 +138,6 @@ bool epoll_class::Write(http_conn &conn)
         // 发送结束
         if (m_iv[1].iov_len<=0)
         { // 发送HTTP响应成功,释放内存
-            conn.unmap();
-            // 方便下次复用
             modfd(epollfd, m_sockfd, EPOLLIN);
             // 是否keep-alive
             if (conn.is_keepalive())

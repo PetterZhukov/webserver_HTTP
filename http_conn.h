@@ -49,12 +49,10 @@ public:
     //================== 与epoll的交互 ====================
     // 初始化基本的数值
     void clear();
-    // 释放内存映射的空间
-    void unmap();
+    
     //================== get ====================
     int get_sockfd() { return m_sockfd; }                 // 获取sockfd
     int get_read_index() { return m_read_index; }         // 获取m_read_index
-    int get_write_index() { return m_write_index; }       // 获取m_write_index
     char *get_read_buf() { return m_read_buf; }           // 获取 m_read_buf
     char *get_write_buf() { return m_write_buf; }         // 获取 m_write_buf
     int get_bytes_to_send() { return bytes_to_send; }     // 获取bytes_to_send
@@ -90,43 +88,41 @@ private:
 
     //================== 报文解析结果 ========================
     //================== 请求行分析结果 ====================
-    char * m_url;           // 请求目标文件的文件名
-    char * m_version;       // 协议版本,只支持 HTTP1.1
-    METHOD m_method;        // 请求方法
+    char *m_url;        // 请求目标文件的文件名
+    char *m_version;    // 协议版本,只支持 HTTP1.1
+    METHOD m_method;    // 请求方法
     //================== 请求头分析结果 ====================
-    char* m_host;           // 主机名
-    int m_content_length;   // 描述HTTP消息实体的传输长度
-    bool m_keepalive;       // HTTP请求是否要保持连接
+    char *m_host;         // 主机名
+    int m_content_length; // 描述HTTP消息实体的传输长度
+    bool m_keepalive;     // HTTP请求是否要保持连接
     //================== 返回数据 ====================
     char m_filename[FILENAME_MAX]; // 客户请求的目标文件的完整目录,其内容为 root_directory+m_url
     struct stat m_file_stat;       // 目标文件的状态
     char *m_address_mmap;          // 客户请求的数据被mmap到的位置
-    
-
-    
+    void unmap();                  // 释放内存映射的空间
     //================== 状态机 ====================
-    CHECK_STATE m_check_state;  // 主状态机当前所处的位置
+    CHECK_STATE m_check_state; // 主状态机当前所处的位置
     //============== 主状态机 ===================
-    HTTP_CODE process_read();                   // 解析HTTP请求
-    HTTP_CODE parse_request_line(char *text);   // 解析HTTP请求首行
-    HTTP_CODE parse_headers(char *text);        // 解析HTTP请求头
+    HTTP_CODE process_read();                     // 解析HTTP请求
+    HTTP_CODE parse_request_line(char *text);     // 解析HTTP请求首行
+    HTTP_CODE parse_headers(char *text);          // 解析HTTP请求头
     HTTP_CODE parse_content_complete(char *text); // 解析HTTP请求内容
-    HTTP_CODE do_request();                     // 对报文做具体的处理
+    HTTP_CODE do_request();                       // 对报文做具体的处理
     //================== 从状态机 ====================
     LINE_STATUS parse_line();
 
     //================== 写响应报文 ====================
-    bool process_write(HTTP_CODE ret);              // 写响应报文
-    bool add_response(const char *format, ...);     // 往写缓冲区中写数据
+    bool process_write(HTTP_CODE ret);                   // 写响应报文
+    bool add_response(const char *format, ...);          // 往写缓冲区中写数据
     bool add_status_line(int status, const char *title); // 添加状态行
-    bool add_headers(int content_len, time_t time);     // 添加响应头部
+    bool add_headers(int content_len, time_t time);      // 添加响应头部
     // 响应头部组件
-    bool add_content_length(int content_len);   // content-length
-    bool add_connection();      // keep_alive
-    bool add_content_type();    // Content-Type
-    bool add_date(time_t t);    // 发送时间
-    bool add_blank_line();      // 空白结束行
-    bool add_content(const char *content); // 添加响应正文
+    bool add_content_length(int content_len); // content-length
+    bool add_connection();                    // keep_alive
+    bool add_content_type();                  // Content-Type
+    bool add_date(time_t t);                  // 发送时间
+    bool add_blank_line();                    // 空白结束行
+    bool add_content(const char *content);    // 添加响应正文
 };
 
 
