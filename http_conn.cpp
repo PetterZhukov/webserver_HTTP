@@ -36,6 +36,8 @@ void http_conn::init(int sockfd, const sockaddr_in &addr)
 // 初始化连接
 void http_conn::clear()
 {
+    unmap();
+
     m_check_state = CHECK_STATE_REQUESTLINE;
     m_checked_index = 0;
     m_start_line = 0;
@@ -55,7 +57,6 @@ void http_conn::clear()
     m_content_length = 0;
     m_address_mmap = NULL;
 
-    unmap();
     bzero(m_read_buf, READ_BUFFER_SIZE);
     bzero(m_write_buf, WRITE_BUFFER_SIZE);
     bzero(&m_address, sizeof(m_address));
@@ -121,7 +122,8 @@ http_conn::HTTP_CODE http_conn::process_read()
     HTTP_CODE ret = NO_REQUEST;
     char *text = NULL;
 
-    while ((m_check_state == CHECK_STATE_CONTENT) && line_status == LINE_OK || ((line_status = parse_line()) == LINE_OK))
+    while ((m_check_state == CHECK_STATE_CONTENT && line_status == LINE_OK) \
+            || ((line_status = parse_line()) == LINE_OK))
     { // 解析到了一行完整的数据  或者解析到了请求体,也是完整的数据
         // 获取一行数据
         text = get_line();
@@ -449,10 +451,10 @@ bool http_conn::add_blank_line()
     return add_response("\r\n");
 }
 // 添加响应正文
-bool http_conn::add_content(const char *content)
-{
-    return add_response("%s", content);
-}
+// bool http_conn::add_content(const char *content)
+// {
+//     return add_response("%s", content);
+// }
 
 //================== 生成返回的报文 ====================
 bool http_conn::process_write(HTTP_CODE ret)
