@@ -35,11 +35,7 @@ questqueue<T>::questqueue(int max_queue) : m_max_queue(max_queue)
 }
 
 template <typename T>
-questqueue<T>::~questqueue()
-{
-    for (auto it = m_questqueue.begin(); it != m_questqueue.end(); it++)
-        delete *it;
-}
+questqueue<T>::~questqueue() {}
 
 // 阻塞式填入元素
 template <typename T>
@@ -49,6 +45,7 @@ bool questqueue<T>::push(T *quest)
     m_queue_mutex.lock(); // lock
     if (m_questqueue.size() >= m_max_queue)
     {
+        m_queue_mutex.unlock();
         return false;
     }
 
